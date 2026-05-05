@@ -1,0 +1,13 @@
+# Node
+node_modules/
+
+# clasp credentials (defensive — usually in $env:USERPROFILE)
+.clasprc.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
