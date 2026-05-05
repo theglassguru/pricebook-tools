@@ -204,3 +204,4 @@ function calcSheetsTotalFormulas_() {
   }
   return total;
 }
+// clasp+git pipeline verified 2026-05-05
