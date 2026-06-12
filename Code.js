@@ -11,6 +11,16 @@
  * The canonical ARRAYFORMULA registry for Repair Calculated Columns lives in
  * Formulas.gs. Menu wiring, Find Missing Markups, and Repair Calculated
  * Columns live in Menu.gs.
+ *
+ * Wizard modes:
+ *   - 'fillMissing' (default): write tier markups only to eligible rows whose
+ *     current Mark Up is empty or non-numeric. Rows with any positive Mark Up
+ *     (manually customized or set by a prior wizard run) are preserved.
+ *   - 'overwriteAll': write tier markups to every eligible row, overwriting
+ *     any existing Mark Up.
+ *
+ * In both modes, rows with Mark Up == 1 are always preserved (flat-fee
+ * passthroughs such as Service surcharges).
  */
 
 // =============================================================================
@@ -73,10 +83,10 @@ function markupWizard() {
     return;
   }
 
-  const total =
+  const totalEligible =
     itemsAnalysis.glass.eligibleCount    + itemsAnalysis.hardware.eligibleCount +
     optionsAnalysis.glass.eligibleCount  + optionsAnalysis.hardware.eligibleCount;
-  if (total === 0) {
+  if (totalEligible === 0) {
     ui.alert('Markup Wizard',
              'No eligible Product rows with a positive cost were found.',
              ui.ButtonSet.OK);
@@ -86,22 +96,27 @@ function markupWizard() {
   showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnalysis);
 }
 
-function applyMarkupsFromWizard() {
+function applyMarkupsFromWizard(mode) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const resolvedMode    = (mode === 'overwriteAll') ? 'overwriteAll' : 'fillMissing';
   const glassTiers      = readTierConfig_(ss, GLASS_TIER_RANGE_A1);
   const hardwareTiers   = readTierConfig_(ss, HARDWARE_TIER_RANGE_A1);
   const itemsAnalysis   = analyzeSheet_(ss, ITEMS_SHEET,   glassTiers, hardwareTiers);
   const optionsAnalysis = analyzeSheet_(ss, OPTIONS_SHEET, glassTiers, hardwareTiers);
-  const itemsWritten    = applyMarkups_(ss, ITEMS_SHEET,   itemsAnalysis,   glassTiers, hardwareTiers);
-  const optionsWritten  = applyMarkups_(ss, OPTIONS_SHEET, optionsAnalysis, glassTiers, hardwareTiers);
+  const itemsWritten    = applyMarkups_(ss, ITEMS_SHEET,   itemsAnalysis,   glassTiers, hardwareTiers, resolvedMode);
+  const optionsWritten  = applyMarkups_(ss, OPTIONS_SHEET, optionsAnalysis, glassTiers, hardwareTiers, resolvedMode);
   return {
+    mode:            resolvedMode,
     itemsGlass:      itemsWritten.glass,
     itemsHardware:   itemsWritten.hardware,
+    itemsSkipped:    itemsWritten.skipped,
     optionsGlass:    optionsWritten.glass,
     optionsHardware: optionsWritten.hardware,
+    optionsSkipped:  optionsWritten.skipped,
     itemsLabel:      ITEMS_SHEET.displayLabel,
     optionsLabel:    OPTIONS_SHEET.displayLabel,
-    total: itemsWritten.glass + itemsWritten.hardware + optionsWritten.glass + optionsWritten.hardware
+    total: itemsWritten.glass + itemsWritten.hardware + optionsWritten.glass + optionsWritten.hardware,
+    totalSkipped: itemsWritten.skipped + optionsWritten.skipped
   };
 }
 
@@ -109,6 +124,9 @@ function showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnaly
   const totalEligible =
     itemsAnalysis.glass.eligibleCount    + itemsAnalysis.hardware.eligibleCount +
     optionsAnalysis.glass.eligibleCount  + optionsAnalysis.hardware.eligibleCount;
+  const totalMissing =
+    itemsAnalysis.glass.missingCount     + itemsAnalysis.hardware.missingCount +
+    optionsAnalysis.glass.missingCount   + optionsAnalysis.hardware.missingCount;
 
   const glassTiersHtml    = buildTierTableHtml_(glassTiers,    [itemsAnalysis.glass,    optionsAnalysis.glass]);
   const hardwareTiersHtml = buildTierTableHtml_(hardwareTiers, [itemsAnalysis.hardware, optionsAnalysis.hardware]);
@@ -116,23 +134,27 @@ function showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnaly
   const itemsBlock   = buildSheetBlock_(ITEMS_SHEET.displayLabel,   itemsAnalysis,   glassTiers, hardwareTiers);
   const optionsBlock = buildSheetBlock_(OPTIONS_SHEET.displayLabel, optionsAnalysis, glassTiers, hardwareTiers);
 
-  const rowWord = totalEligible === 1 ? 'row' : 'rows';
-  const summary = 'Ready to apply markups to ' + totalEligible + ' Product ' + rowWord +
-                  ' across ' + ITEMS_SHEET.displayLabel + ' and ' + OPTIONS_SHEET.displayLabel + '.';
-
   const html =
     '<!DOCTYPE html><html><head><base target="_top"><style>' +
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:16px 16px 72px;color:#1A2733;font-size:13px;}' +
     '.summary{border-radius:6px;padding:10px 12px;margin-bottom:14px;font-weight:600;background:#E3F2FD;border:1px solid #64B5F6;}' +
     '.summary.ok{background:#E8F5E9;border-color:#81C784;}' +
     '.summary.err{background:#FDECEA;border-color:#E57373;}' +
+    '.mode{margin:0 0 16px;padding:10px 12px;background:#F5F8FB;border:1px solid #D6DFE8;border-radius:6px;}' +
+    '.mode-header{font-weight:600;color:#0B5394;font-size:12px;margin-bottom:6px;}' +
+    '.mode-option{display:block;padding:4px 0;cursor:pointer;font-size:12px;}' +
+    '.mode-option input{margin-right:8px;vertical-align:middle;}' +
+    '.mode-count{color:#6B7C8C;}' +
+    '.mode-note{font-size:11px;color:#6B7C8C;margin-top:6px;font-style:italic;}' +
     '.group{margin-bottom:18px;}' +
     '.group-header{font-weight:600;color:#0B5394;font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #0B5394;}' +
     '.subgroup{margin:6px 0 10px;}' +
     '.subgroup-header{font-weight:600;color:#1A2733;font-size:12px;margin-bottom:3px;}' +
     '.eligible-count{font-size:12px;margin:4px 0;font-weight:500;}' +
+    '.missing-count{font-size:11px;color:#6B7C8C;margin:2px 0 0;}' +
     '.tier-breakdown{font-size:11px;color:#6B7C8C;margin:2px 0 0 12px;line-height:1.55;}' +
     '.complete-line{font-size:12px;padding:4px 0;}' +
+    '.skipped-line{font-size:11px;color:#6B7C8C;padding:2px 0 0;font-style:italic;}' +
     '.err-msg{font-size:12px;color:#C62828;padding:8px 0;white-space:pre-wrap;}' +
     '.empty-tiers{font-size:11px;color:#6B7C8C;font-style:italic;padding:4px 0;}' +
     'table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;}' +
@@ -145,16 +167,26 @@ function showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnaly
     '.btn:disabled{opacity:0.6;cursor:not-allowed;}' +
     '</style></head><body>' +
     '<div id="confirm-view">' +
-    '<div class="summary">' + summary + '</div>' +
+    '<div class="summary" id="summary-line"></div>' +
+    '<div class="mode">' +
+    '<div class="mode-header">Mode</div>' +
+    '<label class="mode-option"><input type="radio" name="mode" value="fillMissing" checked>' +
+    'Fill Missing Only <span class="mode-count">(' + totalMissing + ' row' + (totalMissing === 1 ? '' : 's') + ')</span></label>' +
+    '<label class="mode-option"><input type="radio" name="mode" value="overwriteAll">' +
+    'Overwrite All Markups <span class="mode-count">(' + totalEligible + ' row' + (totalEligible === 1 ? '' : 's') + ')</span></label>' +
+    '<div class="mode-note">Rows with Mark Up = 1 are always preserved (flat-fee passthroughs).</div>' +
+    '</div>' +
     '<div class="group"><div class="group-header">' + GLASS_GROUP_LABEL + ' — Tiers</div>' + glassTiersHtml + '</div>' +
     '<div class="group"><div class="group-header">' + HARDWARE_GROUP_LABEL + ' — Tiers</div>' + hardwareTiersHtml + '</div>' +
     itemsBlock + optionsBlock + '</div>' +
     '<div id="complete-view" style="display:none;">' +
     '<div class="summary ok" id="complete-summary"></div>' +
     '<div class="group"><div class="group-header">' + ITEMS_SHEET.displayLabel + '</div>' +
-    '<div class="complete-line" id="items-result"></div></div>' +
+    '<div class="complete-line" id="items-result"></div>' +
+    '<div class="skipped-line" id="items-skipped"></div></div>' +
     '<div class="group"><div class="group-header">' + OPTIONS_SHEET.displayLabel + '</div>' +
-    '<div class="complete-line" id="options-result"></div></div></div>' +
+    '<div class="complete-line" id="options-result"></div>' +
+    '<div class="skipped-line" id="options-skipped"></div></div></div>' +
     '<div id="error-view" style="display:none;">' +
     '<div class="summary err">&#9888; An error occurred while applying markups.</div>' +
     '<div class="err-msg" id="error-message"></div></div>' +
@@ -163,18 +195,33 @@ function showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnaly
     '<button id="apply-btn" class="btn btn-primary">Apply Markups</button>' +
     '<button id="close-btn" class="btn btn-primary" style="display:none;">Close</button></div>' +
     '<script>' +
+    'var fillCount=' + totalMissing + ',overwriteCount=' + totalEligible + ';' +
+    'function updateSummary(){' +
+    'var mode=document.querySelector("input[name=mode]:checked").value;' +
+    'var n=(mode==="fillMissing")?fillCount:overwriteCount;' +
+    'var w=(n===1)?"row":"rows";' +
+    'var label=(mode==="fillMissing")?"fill missing markups on":"overwrite markups on";' +
+    'document.getElementById("summary-line").textContent="Ready to "+label+" "+n+" Product "+w+".";' +
+    'document.getElementById("apply-btn").disabled=(n===0);}' +
+    'var radios=document.querySelectorAll("input[name=mode]");' +
+    'for(var i=0;i<radios.length;i++)radios[i].onchange=updateSummary;' +
+    'updateSummary();' +
     'document.getElementById("cancel-btn").onclick=function(){google.script.host.close();};' +
     'document.getElementById("close-btn").onclick=function(){google.script.host.close();};' +
     'document.getElementById("apply-btn").onclick=function(){' +
+    'var mode=document.querySelector("input[name=mode]:checked").value;' +
     'var b=document.getElementById("apply-btn");b.disabled=true;b.textContent="Applying\u2026";' +
     'document.getElementById("cancel-btn").disabled=true;' +
-    'google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr).applyMarkupsFromWizard();};' +
+    'google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr).applyMarkupsFromWizard(mode);};' +
     'function onOk(r){document.getElementById("confirm-view").style.display="none";' +
     'document.getElementById("complete-view").style.display="block";' +
-    'document.getElementById("complete-summary").innerHTML="&#10003; Updated "+r.total+" row"+(r.total===1?"":"s")+" successfully.";' +
+    'var modeLabel=(r.mode==="fillMissing")?"Filled missing markups on":"Overwrote markups on";' +
+    'document.getElementById("complete-summary").innerHTML="&#10003; "+modeLabel+" "+r.total+" row"+(r.total===1?"":"s")+".";' +
     'var iTot=r.itemsGlass+r.itemsHardware,oTot=r.optionsGlass+r.optionsHardware;' +
     'document.getElementById("items-result").textContent=iTot+" row"+(iTot===1?"":"s")+" updated  ("+r.itemsGlass+" glass, "+r.itemsHardware+" hardware)";' +
     'document.getElementById("options-result").textContent=oTot+" row"+(oTot===1?"":"s")+" updated  ("+r.optionsGlass+" glass, "+r.optionsHardware+" hardware)";' +
+    'if(r.itemsSkipped>0)document.getElementById("items-skipped").textContent=r.itemsSkipped+" row"+(r.itemsSkipped===1?"":"s")+" preserved (existing markup)";' +
+    'if(r.optionsSkipped>0)document.getElementById("options-skipped").textContent=r.optionsSkipped+" row"+(r.optionsSkipped===1?"":"s")+" preserved (existing markup)";' +
     'document.getElementById("cancel-btn").style.display="none";' +
     'document.getElementById("apply-btn").style.display="none";' +
     'document.getElementById("close-btn").style.display="inline-block";}' +
@@ -186,7 +233,7 @@ function showWizardModal_(glassTiers, hardwareTiers, itemsAnalysis, optionsAnaly
     'document.getElementById("cancel-btn").disabled=false;}' +
     '</script></body></html>';
 
-  const output = HtmlService.createHtmlOutput(html).setWidth(540).setHeight(720);
+  const output = HtmlService.createHtmlOutput(html).setWidth(560).setHeight(760);
   SpreadsheetApp.getUi().showModalDialog(output, 'Markup Wizard');
 }
 
@@ -220,6 +267,7 @@ function buildSubgroupHtml_(label, group, tierConfig) {
   const countWord = group.eligibleCount === 1 ? 'row' : 'rows';
   let html = '<div class="subgroup"><div class="subgroup-header">' + label + '</div>';
   html += '<div class="eligible-count">' + group.eligibleCount + ' eligible ' + countWord + '</div>';
+  html += '<div class="missing-count">' + group.missingCount + ' missing markup</div>';
   let tierLines = '';
   for (let i = 0; i < tierConfig.length; i++) {
     if (group.tierCounts[i] > 0) {
@@ -296,13 +344,23 @@ function lookupTierIndex_(cost, tiers) {
 // SHEET ANALYSIS / APPLY
 // =============================================================================
 
+function makeAnalysisGroup_(n) {
+  return {
+    eligibleRows: [],
+    eligibleCount: 0,
+    missingCount: 0,
+    tierCounts: new Array(n).fill(0),
+    missingTierCounts: new Array(n).fill(0)
+  };
+}
+
 function analyzeSheet_(ss, sheetDef, glassTiers, hardwareTiers) {
   const sheet = ss.getSheetByName(sheetDef.name);
   if (!sheet) throw new Error('Sheet "' + sheetDef.name + '" not found.');
   const lastRow = sheet.getLastRow();
   const result = {
-    glass:    { eligibleRows: [], eligibleCount: 0, tierCounts: new Array(glassTiers.length).fill(0) },
-    hardware: { eligibleRows: [], eligibleCount: 0, tierCounts: new Array(hardwareTiers.length).fill(0) }
+    glass:    makeAnalysisGroup_(glassTiers.length),
+    hardware: makeAnalysisGroup_(hardwareTiers.length)
   };
   if (lastRow <= sheetDef.headerRow) return result;
 
@@ -321,7 +379,7 @@ function analyzeSheet_(ss, sheetDef, glassTiers, hardwareTiers) {
     const markup   = row[sheetDef.markupCol - minCol];
     if (typeof cost !== 'number' || cost <= 0) continue;
     // Flat-fee guard: Markup=1 means the row is an intentional pass-through
-    // (Service surcharge, etc.). Don't overwrite with a tier markup.
+    // (Service surcharge, etc.). Always preserved, both modes.
     if (typeof markup === 'number' && markup === 1) continue;
     const klass = classifyForMarkup_(category, type, !sheetDef.typeCol);
     if (klass === 'skip') continue;
@@ -329,56 +387,70 @@ function analyzeSheet_(ss, sheetDef, glassTiers, hardwareTiers) {
     if (tiers.length === 0) continue;
     const sheetRow = sheetDef.headerRow + 1 + i;
     const tierIdx  = lookupTierIndex_(cost, tiers);
-    result[klass].eligibleRows.push({ sheetRow: sheetRow, cost: cost });
+    const hasExistingMarkup = (typeof markup === 'number' && markup > 0);
+    result[klass].eligibleRows.push({
+      sheetRow: sheetRow,
+      cost: cost,
+      hasExistingMarkup: hasExistingMarkup
+    });
     result[klass].tierCounts[tierIdx]++;
+    if (!hasExistingMarkup) {
+      result[klass].missingTierCounts[tierIdx]++;
+      result[klass].missingCount++;
+    }
   }
   result.glass.eligibleCount    = result.glass.eligibleRows.length;
   result.hardware.eligibleCount = result.hardware.eligibleRows.length;
   return result;
 }
 
-function applyMarkups_(ss, sheetDef, analysis, glassTiers, hardwareTiers) {
-  const written = { glass: 0, hardware: 0 };
-  const allEligible = [];
-  for (let i = 0; i < analysis.glass.eligibleRows.length; i++) {
-    allEligible.push({
-      sheetRow: analysis.glass.eligibleRows[i].sheetRow,
-      cost:     analysis.glass.eligibleRows[i].cost,
-      tiers:    glassTiers,
-      klass:    'glass'
-    });
+function applyMarkups_(ss, sheetDef, analysis, glassTiers, hardwareTiers, mode) {
+  const fillMissingOnly = (mode === 'fillMissing');
+  const written = { glass: 0, hardware: 0, skipped: 0 };
+  const targets = [];
+
+  function gatherFromGroup(rows, tiers, klass) {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (fillMissingOnly && r.hasExistingMarkup) {
+        written.skipped++;
+        continue;
+      }
+      targets.push({
+        sheetRow: r.sheetRow,
+        cost:     r.cost,
+        tiers:    tiers,
+        klass:    klass
+      });
+    }
   }
-  for (let i = 0; i < analysis.hardware.eligibleRows.length; i++) {
-    allEligible.push({
-      sheetRow: analysis.hardware.eligibleRows[i].sheetRow,
-      cost:     analysis.hardware.eligibleRows[i].cost,
-      tiers:    hardwareTiers,
-      klass:    'hardware'
-    });
-  }
-  if (allEligible.length === 0) return written;
+
+  gatherFromGroup(analysis.glass.eligibleRows,    glassTiers,    'glass');
+  gatherFromGroup(analysis.hardware.eligibleRows, hardwareTiers, 'hardware');
+
+  if (targets.length === 0) return written;
 
   const sheet = ss.getSheetByName(sheetDef.name);
   let minRow = Infinity, maxRow = -Infinity;
-  for (let i = 0; i < allEligible.length; i++) {
-    const r = allEligible[i].sheetRow;
+  for (let i = 0; i < targets.length; i++) {
+    const r = targets[i].sheetRow;
     if (r < minRow) minRow = r;
     if (r > maxRow) maxRow = r;
   }
   const numRows  = maxRow - minRow + 1;
   const range    = sheet.getRange(minRow, sheetDef.markupCol, numRows, 1);
   const existing = range.getValues();
-  const eligibleMap = {};
-  for (let i = 0; i < allEligible.length; i++) {
-    eligibleMap[allEligible[i].sheetRow] = allEligible[i];
+  const targetMap = {};
+  for (let i = 0; i < targets.length; i++) {
+    targetMap[targets[i].sheetRow] = targets[i];
   }
   for (let i = 0; i < numRows; i++) {
     const sheetRow = minRow + i;
-    if (Object.prototype.hasOwnProperty.call(eligibleMap, sheetRow)) {
-      const e = eligibleMap[sheetRow];
-      const tierIdx = lookupTierIndex_(e.cost, e.tiers);
-      existing[i][0] = e.tiers[tierIdx].markup;
-      written[e.klass]++;
+    if (Object.prototype.hasOwnProperty.call(targetMap, sheetRow)) {
+      const t = targetMap[sheetRow];
+      const tierIdx = lookupTierIndex_(t.cost, t.tiers);
+      existing[i][0] = t.tiers[tierIdx].markup;
+      written[t.klass]++;
     }
   }
   range.setValues(existing);
