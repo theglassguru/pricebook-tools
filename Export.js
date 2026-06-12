@@ -13,7 +13,9 @@ const XLSX_EXPORT_FILES = [
       { sourceName: 'dim_options_values',  destName: 'Dimensional Option Values Imp' }
     ] },
   { filename: 'Pricebook_import_single_tab_with_categories.xlsx',
-    sheets: [{ sourceName: 'pricebook_import_standard', destName: 'Standard' }] }
+    sheets: [{ sourceName: 'pricebook_import_standard', destName: 'Standard' }] },
+  { filename: 'quickbooks_online_pns_sample_file.xlsx',
+    sheets: [{ sourceName: 'quickbooks_online_pns_sample_file', destName: 'Products and Services', headerRows: 1 }] }
 ];
 
 function exportPricebookFiles() {
@@ -28,7 +30,7 @@ function analyzeSourceSheet_(ss, sheetSpec) {
   const sheet = ss.getSheetByName(sheetSpec.sourceName);
   if (!sheet) return { sourceName: sheetSpec.sourceName, destName: sheetSpec.destName, dataRows: 0, error: 'Source sheet not found' };
   const lastRow = sheet.getLastRow();
-  return { sourceName: sheetSpec.sourceName, destName: sheetSpec.destName, dataRows: Math.max(0, lastRow - XLSX_EXPORT_HEADER_ROWS) };
+  return { sourceName: sheetSpec.sourceName, destName: sheetSpec.destName, dataRows: Math.max(0, lastRow - (sheetSpec.headerRows || XLSX_EXPORT_HEADER_ROWS)) };
 }
 
 function buildXlsxForIndex(index) {
