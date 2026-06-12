@@ -8,8 +8,8 @@
  *
  * Inherit specs (per Sean):
  *   Items              → A, B, C, D, F, G          → cursor parks on E
- *   Item Option Values → A, B, C, D, E, G          → cursor parks on F
- *   Item Groupings     → A, B, C, N–W              → cursor parks on F
+ *   Item Option Values → A, B, C, D, E             → cursor parks on F
+ *   Item Groupings     → A, B, C, N–W            → cursor parks on F
  *
  * The active sheet is detected automatically. If the user is not on one
  * of the three supported sheets, the function alerts and exits.
@@ -23,7 +23,7 @@ const INSERT_ROW_SPECS = {
   },
   'Item Option Values': {
     headerRow:   1,
-    inheritCols: [1, 2, 3, 4, 5, 7],     // A, B, C, D, E, G
+    inheritCols: [1, 2, 3, 4, 5],        // A, B, C, D, E  (G is ARRAYFORMULA — do NOT inherit)
     cursorCol:   6                        // F (Option Selection)
   },
   'Item Groupings': {
