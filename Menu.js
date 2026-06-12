@@ -4,21 +4,25 @@
  */
 
 function onOpen(e) {
-  SpreadsheetApp.getUi()
-    .createMenu('⚙ Pricebook Tools')
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Pricebook Tools')
     .addItem('🔐 Authorize & Activate Pricebook Tools', 'authorizeAndActivatePricebookTools')
+    .addItem('☑️ Setup Guide', 'openGeminiSidebar')
     .addSeparator()
-    .addItem('➕ Insert Row Below',                   'insertRowBelowActive')
-    .addSeparator()
-    .addItem('🟰 Check for Duplicates',              'checkAllDuplicates')
-    .addItem('🔧 Repair Calculated Columns',         'repairCalculatedColumns')
-    .addSeparator()
-    .addItem('🔍 Find Missing Markups',              'findMissingMarkups')
-    .addItem('⚡ Run Markup Wizard',                 'markupWizard')
-    .addSeparator()
-    .addItem('📦 Export Pricebook Files',            'exportPricebookFiles')
-    .addSeparator()
-    .addItem('✨ Ask Gemini',                         'openGeminiSidebar')
+    .addSubMenu(ui.createMenu('🎚️ Pricebook Levels')
+      .addItem('🔴 Basic Pricebook',      'levelViewBasic')
+      .addItem('🟡 Normal Pricebook',     'levelViewNormal')
+      .addItem('🟢 Everything Pricebook', 'levelViewEverything')
+      .addItem('❌ Hide All Excluded Rows', 'hideDisabledRows'))
+    .addSubMenu(ui.createMenu('💲 Markups')
+      .addItem('🔍 Find Missing Markups', 'findMissingMarkups')
+      .addItem('⚡ Run Markup Wizard',    'markupWizard'))
+    .addItem('📦 Export Pricebook Files', 'exportPricebookFiles')
+    .addSubMenu(ui.createMenu('🛠️ Utilities')
+      .addItem('➕ Insert Row Below',           'insertRowBelowActive')
+      .addItem('✅ Check for Duplicates',       'checkAllDuplicates')
+      .addItem('🔧 Repair Calculated Columns',  'repairCalculatedColumns')
+      .addItem('🏷️ Update Named Ranges',        'updateNamedRangesSheet'))
     .addToUi();
 }
 
@@ -89,12 +93,15 @@ function showMissingMarkupsModal_(results) {
 }
 
 // =============================================================================
-// REPAIR CALCULATED COLUMNS — Audit-first design
+// REPAIR CALCULATED COLUMNS — Audit-first design with always-on sweep
 //
 // Click flow:
 //   1. Audit row 2 of every registered column (bulk read per sheet)
 //   2. Show modal listing errant columns with reasons (or "all healthy")
-//   3. User clicks Repair → re-audit, then clear+rewrite only errant columns
+//   3. User clicks Repair → always sweep row 3 → maxRows on every registry
+//      column to clear any orphan values below the anchor that could block
+//      the ARRAYFORMULA spill, then re-audit and rewrite errant column
+//      formulas at row 2.
 //
 // An ARRAYFORMULA column is errant if any of:
 //   - Missing       → row 2 has no formula
@@ -103,8 +110,9 @@ function showMissingMarkupsModal_(results) {
 //   - Blocked spill → formula matches but row 2 displays #REF! (something
 //                     below the anchor is blocking the array expansion)
 //
-// Repair (per errant column): clear column body (row 2 → maxRow), flush,
-// setFormula(row 2), flush.
+// Sweep runs on every Repair invocation regardless of errant status.
+// Repair (per errant column): clear anchor cell, flush, setFormula(row 2),
+// flush.
 // =============================================================================
 
 function repairCalculatedColumns() {
@@ -199,24 +207,23 @@ function repairErrantCalculatedColumns() {
   const ss = SpreadsheetApp.getActive();
   const audit = auditCalculatedColumns_(ss);
 
-  const result = { sheets: [], totalRepaired: 0 };
+  const result = { sheets: [], totalRepaired: 0, totalSwept: 0 };
 
   CALC_SHEETS.forEach(function (sheetSpec) {
     const sheetReport = {
       label: sheetSpec.displayLabel,
       name: sheetSpec.name,
+      swept: 0,
       repaired: [],
       errors: []
     };
     result.sheets.push(sheetReport);
 
     const sheetAudit = audit.sheets.filter(function (s) { return s.name === sheetSpec.name; })[0];
-    if (!sheetAudit) return;
-    if (sheetAudit.error) {
+    if (sheetAudit && sheetAudit.error) {
       sheetReport.errors.push(sheetAudit.error);
       return;
     }
-    if (!sheetAudit.errant || sheetAudit.errant.length === 0) return;
 
     const sheet = ss.getSheetByName(sheetSpec.name);
     if (!sheet) {
@@ -225,14 +232,35 @@ function repairErrantCalculatedColumns() {
     }
 
     const maxRows = sheet.getMaxRows();
-    const firstDataRow = sheetSpec.headerRow + 1;
-    const clearNumRows = maxRows - sheetSpec.headerRow;
+    const firstDataRow = sheetSpec.headerRow + 1;       // row 2 = ARRAYFORMULA anchor
+    const firstSweepRow = firstDataRow + 1;             // row 3 = first row below anchor
+    const sweepNumRows = maxRows - firstSweepRow + 1;
+
+    // ---- SWEEP: clear row 3 → maxRows on every registry column ----
+    // Runs unconditionally to remove any orphan static values that could
+    // block the ARRAYFORMULA spill. Anchor row (row 2) is preserved.
+    if (sweepNumRows > 0) {
+      Object.keys(sheetSpec.formulas).forEach(function (letter) {
+        try {
+          const colIdx = colLetterToIndex_(letter);
+          sheet.getRange(firstSweepRow, colIdx, sweepNumRows, 1).clearContent();
+          sheetReport.swept++;
+          result.totalSwept++;
+        } catch (err) {
+          sheetReport.errors.push('Sweep ' + letter + ' (' + err.message + ')');
+        }
+      });
+      SpreadsheetApp.flush();
+    }
+
+    // ---- REPAIR: rewrite formulas for errant columns ----
+    if (!sheetAudit || !sheetAudit.errant || sheetAudit.errant.length === 0) return;
 
     sheetAudit.errant.forEach(function (item) {
       const letter = item.letter;
       try {
         const colIdx = colLetterToIndex_(letter);
-        sheet.getRange(firstDataRow, colIdx, clearNumRows, 1).clearContent();
+        sheet.getRange(firstDataRow, colIdx).clearContent();
         SpreadsheetApp.flush();
         sheet.getRange(firstDataRow, colIdx).setFormula(sheetSpec.formulas[letter]);
         SpreadsheetApp.flush();
@@ -253,7 +281,7 @@ function showRepairAuditModal_(audit) {
   let summaryClass, summaryText;
   if (totalErrant === 0) {
     summaryClass = 'ok';
-    summaryText = '✓ All ARRAYFORMULAs are healthy. Nothing to repair.';
+    summaryText = '✓ All formulas healthy. Sweep ready to run.';
   } else {
     summaryClass = 'warn';
     summaryText = '⚠ ' + totalErrant + ' column' + (totalErrant === 1 ? '' : 's') + ' need repair.';
@@ -278,15 +306,9 @@ function showRepairAuditModal_(audit) {
     body += '</div>';
   });
 
-  let repairNote = '';
-  let buttonsHtml;
-  if (totalErrant === 0) {
-    buttonsHtml = '<button id="close-btn" class="btn btn-primary">Close</button>';
-  } else {
-    repairNote = '<div class="note">Repair will clear all values in errant columns and rewrite the formulas. This action cannot be undone.</div>';
-    buttonsHtml = '<button id="cancel-btn" class="btn btn-secondary">Cancel</button>' +
-                  '<button id="repair-btn" class="btn btn-primary">Repair</button>';
-  }
+  const repairNote = '<div class="note">Repair will sweep all registry columns below row 2 and rewrite any errant formulas. This action cannot be undone.</div>';
+  const buttonsHtml = '<button id="cancel-btn" class="btn btn-secondary">Cancel</button>' +
+                      '<button id="repair-btn" class="btn btn-primary">Repair</button>';
 
   const html = '<!DOCTYPE html><html><head><base target="_top"><style>' +
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:16px 16px 72px;color:#1A2733;font-size:13px;}' +
@@ -305,6 +327,7 @@ function showRepairAuditModal_(audit) {
     'th{background:#F5F8FB;text-align:left;padding:6px 10px;border-bottom:1px solid #D6DFE8;font-weight:600;color:#0B5394;}' +
     'td{padding:5px 10px;border-bottom:1px solid #ECF0F3;}' +
     '.repaired{font-size:12px;color:#2E7D32;padding:4px 0;}' +
+    '.swept{font-size:11px;color:#6B7C8C;padding:2px 0;}' +
     '.err-msg{font-size:12px;color:#C62828;padding:8px 0;white-space:pre-wrap;}' +
     '.actions{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #D6DFE8;padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;}' +
     '.btn{padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;}' +
@@ -316,7 +339,7 @@ function showRepairAuditModal_(audit) {
     '<div class="summary ' + summaryClass + '">' + summaryText + '</div>' +
     body + repairNote + '</div>' +
     '<div id="repairing-view" style="display:none;">' +
-    '<div class="summary info">Repairing columns. This may take a moment\u2026</div></div>' +
+    '<div class="summary info">Sweeping columns and repairing formulas. This may take a moment\u2026</div></div>' +
     '<div id="complete-view" style="display:none;">' +
     '<div class="summary ok" id="complete-summary"></div>' +
     '<div id="complete-body"></div></div>' +
@@ -328,10 +351,8 @@ function showRepairAuditModal_(audit) {
     '<script>(function(){' +
     'var cancelBtn=document.getElementById("cancel-btn");' +
     'var repairBtn=document.getElementById("repair-btn");' +
-    'var closeBtn=document.getElementById("close-btn");' +
     'var closeAfterBtn=document.getElementById("close-after-btn");' +
     'if(cancelBtn)cancelBtn.onclick=function(){google.script.host.close();};' +
-    'if(closeBtn)closeBtn.onclick=function(){google.script.host.close();};' +
     'if(closeAfterBtn)closeAfterBtn.onclick=function(){google.script.host.close();};' +
     'if(repairBtn)repairBtn.onclick=function(){' +
     'document.getElementById("audit-view").style.display="none";' +
@@ -341,10 +362,11 @@ function showRepairAuditModal_(audit) {
     'function onOk(r){' +
     'document.getElementById("repairing-view").style.display="none";' +
     'document.getElementById("complete-view").style.display="block";' +
-    'document.getElementById("complete-summary").innerHTML="&#10003; Repaired "+r.totalRepaired+" column"+(r.totalRepaired===1?"":"s")+".";' +
+    'document.getElementById("complete-summary").innerHTML="&#10003; Swept "+r.totalSwept+" column"+(r.totalSwept===1?"":"s")+", repaired "+r.totalRepaired+" formula"+(r.totalRepaired===1?"":"s")+".";' +
     'var html="";r.sheets.forEach(function(s){' +
-    'if(s.repaired.length===0&&s.errors.length===0)return;' +
+    'if(s.repaired.length===0&&s.errors.length===0&&s.swept===0)return;' +
     'html+="<div class=\\"group\\"><div class=\\"group-header\\">"+s.label+"</div>";' +
+    'if(s.swept>0)html+="<div class=\\"swept\\">Swept "+s.swept+" column"+(s.swept===1?"":"s")+" below row 2</div>";' +
     'if(s.repaired.length>0)html+="<div class=\\"repaired\\">Repaired: "+s.repaired.join(", ")+"</div>";' +
     'if(s.errors.length>0)html+="<div class=\\"error\\">Errors: "+s.errors.join("; ")+"</div>";' +
     'html+="</div>";});' +
