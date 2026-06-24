@@ -1,8 +1,3 @@
-/**
- * FieldPulse Pricebook 2.0 — Menu, Find Missing Markups,
- * Repair Calculated Columns, Gemini Sidebar
- */
-
 function onOpen(e) {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Pricebook Tools')

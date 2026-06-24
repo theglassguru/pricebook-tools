@@ -9,7 +9,7 @@
  * Inherit specs (per Sean):
  *   Items              → A, B, C, D, F, G          → cursor parks on E
  *   Item Option Values → A, B, C, D, E             → cursor parks on F
- *   Item Groupings     → A, B, C, N–W            → cursor parks on F
+ *   Item Groupings     → A, B, C, N–W              → cursor parks on F
  *
  * The active sheet is detected automatically. If the user is not on one
  * of the three supported sheets, the function alerts and exits.
