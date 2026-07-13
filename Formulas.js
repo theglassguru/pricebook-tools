@@ -30,7 +30,7 @@
 
 const CALC_SHEETS = [
   // ===========================================================================
-  // ITEMS — 26 ARRAYFORMULAs
+  // ITEMS — 28 ARRAYFORMULAs
   // ===========================================================================
   {
     name: 'Items',
@@ -78,6 +78,9 @@ const CALC_SHEETS = [
 ))`,
       AB: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),REGEXREPLACE(TRIM(E2:E),"\\s+"," "),""))`,
       AC: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),UPPER(IF(REGEXMATCH(LOWER(TRIM(E2:E)),"hardware$"),SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(D2:D,", HARDWARE",""),", LABOR",""),", ","-"),"SHOWER & BATH","SHOWERBATH")&"-HDWR",SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(D2:D,", HARDWARE",""),", LABOR",""),", ","-"),"SHOWER & BATH","SHOWERBATH")&IF((B2:B<>"")*(C2:C<>""),"-"&SUBSTITUTE(B2:B,CHAR(34),"")&"-"&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(C2:C,"Patterned / Textured, Annealed","PT-A"),"Patterned / Textured, Tempered","PT-T"),"Reflective / Tinted, Annealed","RT-A"),"Reflective / Tinted, Tempered","RT-T"),"Laminated, Annealed","IMPACT"),"Annealed","A"),"Tempered","T"),"Laminated","L"),"Mirror","M"),", Specialty","-SP"),IF(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))="","","-"&REGEXREPLACE(REGEXREPLACE(REGEXREPLACE(UPPER(REGEXREPLACE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))," / ","-"),"(",""),")",""),CHAR(34),"")," ","-"),"-+","-")),"-SINGLE$","-S"),"-DOUBLE$","-D"),"-TRIPLE$","-T"))))&IF(AD2:AD="product","-P",IF(AD2:AD="service","-S",""))),""))`,
+      AD: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),LOWER(TRIM(F2:F)),""))`,
+      O: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),1,""))`,
+      P: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),IF(TRIM(F2:F)="Product","Yes",IF(TRIM(F2:F)="Service","No","")),""))`,
       AE: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),0,""))`,
       AF: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),0,""))`,
       AG: `=ARRAYFORMULA(IF((A2:A=TRUE)*(N2:N<>""),SUBSTITUTE(N2:N,", ",","),""))`,
