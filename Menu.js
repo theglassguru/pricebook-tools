@@ -17,6 +17,7 @@ function onOpen(e) {
       .addItem('➕ Insert Row Below',           'insertRowBelowActive')
       .addItem('✅ Check for Duplicates',       'checkAllDuplicates')
       .addItem('🔧 Repair Calculated Columns',  'repairCalculatedColumns')
+      .addItem('🪜 Repair Variables Tier Formulas', 'repairVariablesTierFormulas')
       .addItem('🏷️ Update Named Ranges',        'updateNamedRangesSheet'))
     .addToUi();
 }
@@ -379,6 +380,233 @@ function showRepairAuditModal_(audit) {
 
 function escapeHtml_(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// =============================================================================
+// REPAIR VARIABLES TIER FORMULAS — per-cell tier-cliff repair
+//
+// The Variables sheet holds two cost-tier tables: Glass & Mirrors (rows 12–21)
+// and Hardware, Parts, Other (rows 26–35). Each tier row carries three
+// generated formulas — G (Note text), I (Sell @ Ceiling), K (Cliff to Next
+// Tier). K on the LAST row of each table is a static "—" (no next tier) and is
+// intentionally NOT generated, so repair never writes those two cells.
+//
+// Canonical formulas come from VARIABLES_TIER_FORMULAS (Formulas.js), built by
+// buildVariablesTierFormulas_() from VARIABLES_TIER_TABLES. They are per-cell
+// scalar formulas, NOT ARRAYFORMULAs — there is no spill and no sweep. Repair
+// audits each generated cell and rewrites any that are Missing or drifted
+// (Mismatch). Click flow mirrors Repair Calculated Columns:
+//   audit -> modal -> confirm -> rewrite errant cells -> completion summary.
+// =============================================================================
+
+function repairVariablesTierFormulas() {
+  const ss = SpreadsheetApp.getActive();
+  let audit;
+  try {
+    audit = auditVariablesTierFormulas_(ss);
+  } catch (err) {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Repair Variables Tier Formulas — Error', err.message, ui.ButtonSet.OK);
+    return;
+  }
+  showVariablesTierAuditModal_(audit);
+}
+
+function tierCellRef_(key) {
+  const s = String(key).toUpperCase();
+  let i = 0;
+  while (i < s.length && s[i] >= 'A' && s[i] <= 'Z') i++;
+  const letter = s.substring(0, i);
+  const row = parseInt(s.substring(i), 10);
+  if (!letter || !(row > 0)) return null;
+  return { letter: letter, row: row };
+}
+
+function auditVariablesTierFormulas_(ss) {
+  const sheetName = 'Variables';
+  const report = { sheetName: sheetName, error: null, total: 0, okCount: 0, errant: [] };
+
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    report.error = 'Sheet "' + sheetName + '" not found';
+    return report;
+  }
+
+  const keys = Object.keys(VARIABLES_TIER_FORMULAS);
+  report.total = keys.length;
+  if (keys.length === 0) return report;
+
+  let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+  const cells = [];
+  keys.forEach(function (key) {
+    const ref = tierCellRef_(key);
+    if (!ref) return;
+    const colIdx = colLetterToIndex_(ref.letter);
+    cells.push({ key: key, row: ref.row, colIdx: colIdx });
+    if (ref.row < minRow) minRow = ref.row;
+    if (ref.row > maxRow) maxRow = ref.row;
+    if (colIdx < minCol) minCol = colIdx;
+    if (colIdx > maxCol) maxCol = colIdx;
+  });
+
+  const liveFormulas = sheet
+    .getRange(minRow, minCol, maxRow - minRow + 1, maxCol - minCol + 1)
+    .getFormulas();
+
+  cells.forEach(function (c) {
+    const actualFormula = liveFormulas[c.row - minRow][c.colIdx - minCol] || '';
+    const expectedNorm = normalizeFormula_(VARIABLES_TIER_FORMULAS[c.key]);
+    const actualNorm = normalizeFormula_(actualFormula);
+    let reason = null;
+    if (!actualNorm) reason = 'Missing';
+    else if (actualNorm !== expectedNorm) reason = 'Mismatch';
+    if (reason) report.errant.push({ cell: c.key, reason: reason });
+    else report.okCount++;
+  });
+
+  report.errant.sort(function (a, b) {
+    const ra = tierCellRef_(a.cell), rb = tierCellRef_(b.cell);
+    if (ra.row !== rb.row) return ra.row - rb.row;
+    return colLetterToIndex_(ra.letter) - colLetterToIndex_(rb.letter);
+  });
+
+  return report;
+}
+
+function repairErrantVariablesTierFormulas() {
+  const ss = SpreadsheetApp.getActive();
+  const audit = auditVariablesTierFormulas_(ss);
+  const result = { sheetName: audit.sheetName, repaired: [], errors: [] };
+
+  if (audit.error) { result.errors.push(audit.error); return result; }
+
+  const sheet = ss.getSheetByName(audit.sheetName);
+  if (!sheet) { result.errors.push('Sheet not found'); return result; }
+
+  audit.errant.forEach(function (item) {
+    const ref = tierCellRef_(item.cell);
+    try {
+      sheet.getRange(ref.row, colLetterToIndex_(ref.letter))
+           .setFormula(VARIABLES_TIER_FORMULAS[item.cell]);
+      result.repaired.push(item.cell);
+    } catch (err) {
+      result.errors.push(item.cell + ' (' + err.message + ')');
+    }
+  });
+  SpreadsheetApp.flush();
+  return result;
+}
+
+function showVariablesTierAuditModal_(audit) {
+  const hasError = !!audit.error;
+  const totalErrant = hasError ? 0 : audit.errant.length;
+
+  let summaryClass, summaryText;
+  if (hasError) {
+    summaryClass = 'err';
+    summaryText = '⚠ ' + audit.error;
+  } else if (totalErrant === 0) {
+    summaryClass = 'ok';
+    summaryText = '✓ All ' + audit.total + ' tier formulas healthy.';
+  } else {
+    summaryClass = 'warn';
+    summaryText = '⚠ ' + totalErrant + ' of ' + audit.total + ' tier formula' +
+                  (totalErrant === 1 ? '' : 's') + ' need repair.';
+  }
+
+  let body = '';
+  if (!hasError) {
+    body += '<div class="group"><div class="group-header">' + escapeHtml_(audit.sheetName) +
+            ' — Cost Tier Tables</div>';
+    if (totalErrant === 0) {
+      body += '<div class="empty">✓ All ' + audit.total +
+              ' formulas OK (Note / Sell @ Ceiling / Cliff)</div>';
+    } else {
+      body += '<div class="count">' + totalErrant + ' of ' + audit.total + ' formula' +
+              (totalErrant === 1 ? '' : 's') + ' need repair (' + audit.okCount + ' OK)</div>';
+      body += '<table><thead><tr><th>Cell</th><th>Reason</th></tr></thead><tbody>';
+      audit.errant.forEach(function (e) {
+        body += '<tr><td>' + escapeHtml_(e.cell) + '</td><td>' + escapeHtml_(e.reason) + '</td></tr>';
+      });
+      body += '</tbody></table>';
+    }
+    body += '</div>';
+  }
+
+  const repairNote = hasError ? '' :
+    '<div class="note">Repair rewrites the generated Note (G), Sell @ Ceiling (I) and Cliff to Next ' +
+    'Tier (K) formulas for any drifted cell. The static "—" in the last Cliff cell of each table is ' +
+    'left untouched. This action cannot be undone.</div>';
+
+  const repairBtnHtml = hasError ? '' :
+    '<button id="repair-btn" class="btn btn-primary">Repair</button>';
+
+  const html = '<!DOCTYPE html><html><head><base target="_top"><style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:16px 16px 72px;color:#1A2733;font-size:13px;}' +
+    '.summary{border-radius:6px;padding:10px 12px;margin-bottom:14px;font-weight:600;}' +
+    '.summary.ok{background:#E8F5E9;border:1px solid #81C784;}' +
+    '.summary.warn{background:#FFF4E5;border:1px solid #FFB74D;}' +
+    '.summary.info{background:#E3F2FD;border:1px solid #64B5F6;}' +
+    '.summary.err{background:#FDECEA;border:1px solid #E57373;}' +
+    '.group{margin-bottom:18px;}' +
+    '.group-header{font-weight:600;color:#0B5394;font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #0B5394;}' +
+    '.count{color:#C62828;font-size:11px;margin:6px 0;}' +
+    '.empty{color:#2E7D32;font-size:12px;padding:4px 0;}' +
+    '.error{color:#C62828;font-size:12px;font-style:italic;padding:4px 0;}' +
+    '.detail{color:#2E7D32;font-size:12px;padding:4px 0;white-space:pre-wrap;}' +
+    '.note{font-size:11px;color:#6B7C8C;font-style:italic;padding:8px 0;margin-bottom:8px;}' +
+    'table{width:100%;border-collapse:collapse;font-size:12px;}' +
+    'th{background:#F5F8FB;text-align:left;padding:6px 10px;border-bottom:1px solid #D6DFE8;font-weight:600;color:#0B5394;}' +
+    'td{padding:5px 10px;border-bottom:1px solid #ECF0F3;}' +
+    '.actions{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #D6DFE8;padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;}' +
+    '.btn{padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;}' +
+    '.btn-secondary{background:white;border-color:#D6DFE8;color:#1A2733;}' +
+    '.btn-primary{background:#0B5394;color:white;}' +
+    '</style></head><body>' +
+    '<div id="audit-view">' +
+    '<div class="summary ' + summaryClass + '">' + summaryText + '</div>' +
+    body + repairNote + '</div>' +
+    '<div id="repairing-view" style="display:none;">' +
+    '<div class="summary info">Repairing tier formulas…</div></div>' +
+    '<div id="complete-view" style="display:none;">' +
+    '<div class="summary ok" id="complete-summary"></div>' +
+    '<div class="detail" id="complete-repaired"></div>' +
+    '<div class="error" id="complete-errors"></div></div>' +
+    '<div id="error-view" style="display:none;">' +
+    '<div class="summary err">⚠ An error occurred during repair.</div>' +
+    '<div class="error" id="error-message"></div></div>' +
+    '<div class="actions">' +
+    '<button id="cancel-btn" class="btn btn-secondary">Cancel</button>' + repairBtnHtml +
+    '<button id="close-after-btn" class="btn btn-primary" style="display:none;">Close</button></div>' +
+    '<script>(function(){' +
+    'var cancelBtn=document.getElementById("cancel-btn");' +
+    'var repairBtn=document.getElementById("repair-btn");' +
+    'var closeAfterBtn=document.getElementById("close-after-btn");' +
+    'if(cancelBtn)cancelBtn.onclick=function(){google.script.host.close();};' +
+    'if(closeAfterBtn)closeAfterBtn.onclick=function(){google.script.host.close();};' +
+    'if(repairBtn)repairBtn.onclick=function(){' +
+    'document.getElementById("audit-view").style.display="none";' +
+    'document.getElementById("repairing-view").style.display="block";' +
+    'cancelBtn.style.display="none";repairBtn.style.display="none";' +
+    'google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr).repairErrantVariablesTierFormulas();};' +
+    'function onOk(r){' +
+    'document.getElementById("repairing-view").style.display="none";' +
+    'document.getElementById("complete-view").style.display="block";' +
+    'document.getElementById("complete-summary").innerHTML="&#10003; Repaired "+r.repaired.length+" tier formula"+(r.repaired.length===1?"":"s")+".";' +
+    'document.getElementById("complete-repaired").textContent=r.repaired.length?("Repaired: "+r.repaired.join(", ")):"";' +
+    'document.getElementById("complete-errors").textContent=r.errors.length?("Errors: "+r.errors.join("; ")):"";' +
+    'closeAfterBtn.style.display="inline-block";}' +
+    'function onErr(e){' +
+    'document.getElementById("repairing-view").style.display="none";' +
+    'document.getElementById("error-view").style.display="block";' +
+    'document.getElementById("error-message").textContent=(e&&e.message)?e.message:String(e);' +
+    'closeAfterBtn.style.display="inline-block";}' +
+    '})();</script></body></html>';
+
+  SpreadsheetApp.getUi().showModalDialog(
+    HtmlService.createHtmlOutput(html).setWidth(540).setHeight(560),
+    'Repair Variables Tier Formulas'
+  );
 }
 
 function openGeminiSidebar() {
