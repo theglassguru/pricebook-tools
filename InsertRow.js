@@ -7,9 +7,14 @@
  * ARRAYFORMULAs spill cleanly into the new row.
  *
  * Inherit specs (per Sean):
- *   Items              → A, B, C, D, F, G          → cursor parks on E
- *   Item Option Values → A, B, C, D, E             → cursor parks on F
- *   Item Groupings     → A, B, C, N–W              → cursor parks on F
+ *   Items              → A, B, C, D, F, G, AZ      → cursor parks on E
+ *   Item Option Values → A, B, C, D, E, R          → cursor parks on F
+ *   Item Groupings     → A, B, C, N–W, AT          → cursor parks on F
+ *
+ * AZ / R / AT each carry the Pricebook Level tag (Basic / Normal /
+ * Everything) — static values, NOT formulas — so the new row inherits the
+ * same level as the row above and shows/hides with its neighbors under the
+ * Pricebook Levels views.
  *
  * The active sheet is detected automatically. If the user is not on one
  * of the three supported sheets, the function alerts and exits.
@@ -18,18 +23,18 @@
 const INSERT_ROW_SPECS = {
   'Items': {
     headerRow:   1,
-    inheritCols: [1, 2, 3, 4, 6, 7],     // A, B, C, D, F, G
-    cursorCol:   5                        // E (Item)
+    inheritCols: [1, 2, 3, 4, 6, 7, 52],   // A, B, C, D, F, G, AZ (Pricebook Level)
+    cursorCol:   5                          // E (Item)
   },
   'Item Option Values': {
     headerRow:   1,
-    inheritCols: [1, 2, 3, 4, 5],        // A, B, C, D, E  (G is ARRAYFORMULA — do NOT inherit)
-    cursorCol:   6                        // F (Option Selection)
+    inheritCols: [1, 2, 3, 4, 5, 18],      // A, B, C, D, E, R (Pricebook Level)  (Q is ARRAYFORMULA — do NOT inherit)
+    cursorCol:   6                          // F (Option Selection)
   },
   'Item Groupings': {
     headerRow:   1,
-    inheritCols: [1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],  // A, B, C, N–W
-    cursorCol:   6                                                     // F (Item Name)
+    inheritCols: [1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 46],  // A, B, C, N–W, AT (Pricebook Level)
+    cursorCol:   6                                                        // F (Item Name)
   }
 };
 

@@ -1,29 +1,41 @@
 function onOpen(e) {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Pricebook Tools')
-    .addItem('🔐 Authorize & Activate Pricebook Tools', 'authorizeAndActivatePricebookTools')
-    .addItem('☑️ Setup Guide', 'openGeminiSidebar')
+    // --- Setup & help ---
+    .addItem('🔐 Activate Pricebook Tools', 'authorizeAndActivatePricebookTools')
+    .addItem('❓ Setup Guide', 'openGeminiSidebar')
     .addSeparator()
+    // --- View & price ---
     .addSubMenu(ui.createMenu('🎚️ Pricebook Levels')
-      .addItem('🔴 Basic Pricebook',      'levelViewBasic')
-      .addItem('🟡 Normal Pricebook',     'levelViewNormal')
-      .addItem('🟢 Everything Pricebook', 'levelViewEverything')
+      .addItem('🔴 Basic',      'levelViewBasic')
+      .addItem('🟡 Normal',     'levelViewNormal')
+      .addItem('🟢 Everything', 'levelViewEverything')
       .addItem('❌ Hide All Excluded Rows', 'hideDisabledRows'))
     .addSubMenu(ui.createMenu('💲 Markups')
       .addItem('🔍 Find Missing Markups', 'findMissingMarkups')
       .addItem('⚡ Run Markup Wizard',    'markupWizard'))
+    .addSeparator()
+    // --- Check & export ---
+    .addItem('🩺 Pre-Export Health Check', 'preExportHealthCheck')
     .addItem('📦 Export Pricebook Files', 'exportPricebookFiles')
+    .addSeparator()
+    // --- Safety net ---
     .addSubMenu(ui.createMenu('🛠️ Utilities')
       .addItem('➕ Insert Row Below',           'insertRowBelowActive')
       .addItem('✅ Check for Duplicates',       'checkAllDuplicates')
       .addItem('🔧 Repair Calculated Columns',  'repairCalculatedColumns')
       .addItem('🪜 Repair Variables Tier Formulas', 'repairVariablesTierFormulas')
-      .addItem('🏷️ Update Named Ranges',        'updateNamedRangesSheet'))
+      .addItem('🏷️ Update Named Ranges (advanced)', 'updateNamedRangesSheet'))
     .addToUi();
 }
 
-function findMissingMarkups() {
-  const ss = SpreadsheetApp.getActive();
+// =============================================================================
+// MISSING MARKUPS — audit worker + menu entry
+// auditMissingMarkups_ is shared by the standalone menu item AND the
+// Pre-Export Health Check, so both report identically.
+// =============================================================================
+
+function auditMissingMarkups_(ss) {
   const targets = [ITEMS_SHEET, OPTIONS_SHEET];
   const results = [];
   targets.forEach(function (def) {
@@ -53,7 +65,12 @@ function findMissingMarkups() {
     }
     results.push({ label: def.displayLabel, missing: missing });
   });
-  showMissingMarkupsModal_(results);
+  return results;
+}
+
+function findMissingMarkups() {
+  const ss = SpreadsheetApp.getActive();
+  showMissingMarkupsModal_(auditMissingMarkups_(ss));
 }
 
 function showMissingMarkupsModal_(results) {
@@ -86,6 +103,125 @@ function showMissingMarkupsModal_(results) {
     '</style></head><body><div class="summary ' + summaryClass + '">' + summaryText + '</div>' + body + '</body></html>';
   const output = HtmlService.createHtmlOutput(html).setWidth(460).setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(output, 'Missing Markups Audit');
+}
+
+// =============================================================================
+// PRE-EXPORT HEALTH CHECK — one-click readiness gate (v1)
+//
+// Aggregates the audits already defined in this file into a single verdict:
+//   • Markups            — auditMissingMarkups_        (cost but no markup)
+//   • Calculated Columns — auditCalculatedColumns_     (ARRAYFORMULA anchors)
+//   • Tier Pricing       — auditVariablesTierFormulas_ (Variables tier tables)
+// Read-only: it never writes. Each failing check names the tool that fixes it.
+//
+// DEFERRED to v2 (workers live in other files / need a spec decision):
+//   • Duplicates (Check for Duplicates), export-source readiness (Export.js),
+//     stray #REF!/#N/A error-cell scan, and blank required-field check.
+// =============================================================================
+
+function preExportHealthCheck() {
+  const ss = SpreadsheetApp.getActive();
+  const checks = [];
+
+  // 1) Markups
+  try {
+    const mm = auditMissingMarkups_(ss);
+    const miss = mm.reduce(function (s, r) { return s + (r.missing ? r.missing.length : 0); }, 0);
+    const errs = mm.filter(function (r) { return r.error; }).map(function (r) { return r.error; });
+    if (errs.length) checks.push({ label: 'Markups', ok: false, detail: errs.join('; ') });
+    else checks.push({
+      label: 'Markups',
+      ok: miss === 0,
+      detail: miss === 0 ? 'Every costed item and option value has a markup.'
+                         : miss + ' row' + (miss === 1 ? '' : 's') + ' have a cost but no markup.',
+      hint: '💲 Markups → Find Missing Markups'
+    });
+  } catch (e) {
+    checks.push({ label: 'Markups', ok: false, detail: 'Check could not run: ' + e.message });
+  }
+
+  // 2) Calculated Columns
+  try {
+    const cc = auditCalculatedColumns_(ss);
+    checks.push({
+      label: 'Calculated Columns',
+      ok: cc.totalErrant === 0,
+      detail: cc.totalErrant === 0 ? 'All ARRAYFORMULA anchor columns are healthy.'
+                                   : cc.totalErrant + ' column' + (cc.totalErrant === 1 ? '' : 's') + ' need repair.',
+      hint: '🛠️ Utilities → Repair Calculated Columns'
+    });
+  } catch (e) {
+    checks.push({ label: 'Calculated Columns', ok: false, detail: 'Check could not run: ' + e.message });
+  }
+
+  // 3) Tier Pricing
+  try {
+    const tf = auditVariablesTierFormulas_(ss);
+    if (tf.error) {
+      checks.push({ label: 'Tier Pricing', ok: false, detail: tf.error });
+    } else {
+      checks.push({
+        label: 'Tier Pricing',
+        ok: tf.errant.length === 0,
+        detail: tf.errant.length === 0 ? 'All ' + tf.total + ' tier formulas are healthy.'
+                                       : tf.errant.length + ' of ' + tf.total + ' tier formula' + (tf.errant.length === 1 ? '' : 's') + ' need repair.',
+        hint: '🛠️ Utilities → Repair Variables Tier Formulas'
+      });
+    }
+  } catch (e) {
+    checks.push({ label: 'Tier Pricing', ok: false, detail: 'Check could not run: ' + e.message });
+  }
+
+  showHealthCheckModal_(checks);
+}
+
+function showHealthCheckModal_(checks) {
+  const failing = checks.filter(function (c) { return !c.ok; }).length;
+
+  let summaryClass, summaryText;
+  if (failing === 0) {
+    summaryClass = 'ok';
+    summaryText = '✓ You’re ready to export — all ' + checks.length + ' checks passed.';
+  } else {
+    summaryClass = 'warn';
+    summaryText = '⚠ ' + failing + ' of ' + checks.length + ' check' + (failing === 1 ? '' : 's') + ' need attention before export.';
+  }
+
+  let body = '';
+  checks.forEach(function (c) {
+    body += '<div class="group"><div class="group-header">' + escapeHtml_(c.label) + '</div>';
+    if (c.ok) {
+      body += '<div class="empty">✓ ' + escapeHtml_(c.detail) + '</div>';
+    } else {
+      body += '<div class="count">⚠ ' + escapeHtml_(c.detail) + '</div>';
+      if (c.hint) body += '<div class="note">Fix with: ' + escapeHtml_(c.hint) + '</div>';
+    }
+    body += '</div>';
+  });
+
+  const footNote = failing === 0
+    ? '<div class="note">All clear. Run 📦 Export Pricebook Files to finish.</div>'
+    : '<div class="note">Clear the items above, then run this check again before exporting.</div>';
+
+  const html = '<!DOCTYPE html><html><head><base target="_top"><style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:16px 16px 72px;color:#1A2733;font-size:13px;}' +
+    '.summary{border-radius:6px;padding:10px 12px;margin-bottom:14px;font-weight:600;}' +
+    '.summary.ok{background:#E8F5E9;border:1px solid #81C784;}' +
+    '.summary.warn{background:#FFF4E5;border:1px solid #FFB74D;}' +
+    '.group{margin-bottom:16px;}' +
+    '.group-header{font-weight:600;color:#0B5394;font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #0B5394;}' +
+    '.count{color:#C62828;font-size:12px;margin:6px 0;}.empty{color:#2E7D32;font-size:12px;padding:4px 0;}' +
+    '.note{font-size:11px;color:#6B7C8C;font-style:italic;padding:4px 0;}' +
+    '.actions{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #D6DFE8;padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;}' +
+    '.btn{padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;}' +
+    '.btn-primary{background:#0B5394;color:white;}' +
+    '</style></head><body>' +
+    '<div class="summary ' + summaryClass + '">' + summaryText + '</div>' + body + footNote +
+    '<div class="actions"><button id="close-btn" class="btn btn-primary">Close</button></div>' +
+    '<script>document.getElementById("close-btn").onclick=function(){google.script.host.close();};</script>' +
+    '</body></html>';
+
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(480).setHeight(520), 'Pre-Export Health Check');
 }
 
 // =============================================================================
@@ -335,7 +471,7 @@ function showRepairAuditModal_(audit) {
     '<div class="summary ' + summaryClass + '">' + summaryText + '</div>' +
     body + repairNote + '</div>' +
     '<div id="repairing-view" style="display:none;">' +
-    '<div class="summary info">Sweeping columns and repairing formulas. This may take a moment\u2026</div></div>' +
+    '<div class="summary info">Sweeping columns and repairing formulas. This may take a moment…</div></div>' +
     '<div id="complete-view" style="display:none;">' +
     '<div class="summary ok" id="complete-summary"></div>' +
     '<div id="complete-body"></div></div>' +
@@ -609,7 +745,29 @@ function showVariablesTierAuditModal_(audit) {
   );
 }
 
+// =============================================================================
+// SETUP GUIDE SIDEBAR — narrow docked panel + wide floating view
+//
+// The GeminiSidebar HTML is now an Apps Script *template* (uses <?= mode ?>),
+// so it must be served via createTemplateFromFile().evaluate(), NOT
+// createHtmlOutputFromFile(). 'sidebar' = narrow docked; 'wide' = floating
+// modeless dialog. The in-panel Expand/Dock buttons swap between the two.
+// =============================================================================
+
 function openGeminiSidebar() {
-  const html = HtmlService.createHtmlOutputFromFile('GeminiSidebar').setTitle('Pricebook Assistant');
+  const t = HtmlService.createTemplateFromFile('GeminiSidebar');
+  t.mode = 'sidebar';
+  const html = t.evaluate().setTitle('Pricebook Assistant');
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function openGeminiWide() {
+  const t = HtmlService.createTemplateFromFile('GeminiSidebar');
+  t.mode = 'wide';
+  const html = t.evaluate().setWidth(600).setHeight(680);
+  SpreadsheetApp.getUi().showModelessDialog(html, 'Pricebook Assistant');
+}
+
+function getPricebookFileName() {
+  return SpreadsheetApp.getActiveSpreadsheet().getName();
 }

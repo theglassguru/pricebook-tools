@@ -3,41 +3,134 @@
 <head>
   <base target="_blank">
   <style>
-    body { font-family: 'Roboto', Arial, sans-serif; padding: 12px; color: #202124; }
-    h1 { font-size: 16px; font-weight: 600; margin: 16px 0 4px 0; color: #202124; }
-    h2 { font-size: 15px; margin: 8px 0; }
-    p { margin: 0 0 16px 0; line-height: 1.7; }
-    a { color: rgb(0, 119, 183); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    :root{
+      --ink:#1A2733; --brand:#0B5394; --muted:#6B7C8C;
+      --line:#D6DFE8; --line-soft:#ECF0F3; --panel:#F5F8FB;
+      --info-bg:#E3F2FD; --info-bd:#64B5F6;
+      --warn-bg:#FFF4E5; --warn-bd:#FFB74D; --warn-ink:#B26A00;
+    }
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      margin:0; padding:14px; color:var(--ink); font-size:13px; line-height:1.5; background:#fff;}
+    .toolbar{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px;}
+    .toolbar .title{font-weight:700; color:var(--brand); font-size:14px;}
+    .toggle{display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+      color:var(--brand); background:var(--panel); border:1px solid var(--line); border-radius:6px;
+      padding:5px 9px; cursor:pointer; font-family:inherit; white-space:nowrap;}
+    .toggle:hover{background:#EAF1F8; border-color:var(--brand);}
+    .intro{background:var(--info-bg); border:1px solid var(--info-bd); border-radius:6px;
+      padding:10px 12px; margin-bottom:14px; font-size:12px;}
+    .legend{font-size:11px; color:var(--muted); margin:0 2px 16px; display:flex; align-items:center; gap:6px;}
+    .legend .pill{font-size:9px; font-weight:700; color:var(--warn-ink); background:var(--warn-bg);
+      border:1px solid var(--warn-bd); border-radius:4px; padding:1px 5px; letter-spacing:.3px;}
+    .card{margin-bottom:20px;}
+    .group-header{font-weight:600; color:var(--brand); font-size:13px; margin-bottom:2px;
+      padding-bottom:5px; border-bottom:2px solid var(--brand); display:flex; align-items:center; gap:7px;}
+    .group-header .badge{font-size:10px; font-weight:700; color:#fff; background:var(--brand);
+      border-radius:4px; padding:1px 6px; letter-spacing:.3px;}
+    .tip{font-size:11px; color:var(--muted); font-style:italic; margin:7px 2px 8px;}
+    ol.steps{list-style:none; margin:8px 0 0; padding:0; counter-reset:step;}
+    ol.steps li{margin:0;}
+    ol.steps li a{counter-increment:step; display:flex; align-items:center; gap:10px;
+      padding:7px 8px; border-radius:6px; color:var(--ink); text-decoration:none;
+      border:1px solid transparent; transition:background .12s,border-color .12s;}
+    ol.steps li a::before{content:counter(step); flex:0 0 auto; width:20px; height:20px; border-radius:50%;
+      background:var(--panel); border:1px solid var(--line); color:var(--brand);
+      font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+    ol.steps li a:hover{background:var(--panel); border-color:var(--line);}
+    ol.steps li a:hover::before{background:var(--brand); border-color:var(--brand); color:#fff;}
+    ol.steps li a .label{flex:1;}
+    ol.steps li a .chev{color:var(--muted); font-size:12px; opacity:0; transition:opacity .12s;}
+    ol.steps li a:hover .chev{opacity:1;}
+    ol.steps li .pending{counter-increment:step; display:flex; align-items:center; gap:10px;
+      padding:7px 8px; border-radius:6px; background:var(--warn-bg); border:1px solid var(--warn-bd);
+      color:var(--warn-ink); cursor:default;}
+    ol.steps li .pending::before{content:counter(step); flex:0 0 auto; width:20px; height:20px; border-radius:50%;
+      background:#fff; border:1px solid var(--warn-bd); color:var(--warn-ink);
+      font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+    ol.steps li .pending .label{flex:1; font-weight:500;}
+    ol.steps li .pending .tbd{font-size:9px; font-weight:700; background:var(--warn-ink); color:#fff;
+      border-radius:4px; padding:1px 5px; letter-spacing:.3px;}
+    .footer{margin-top:18px; padding-top:12px; border-top:1px solid var(--line-soft); font-size:11px; color:var(--muted);}
+    .footer a{color:var(--brand); text-decoration:none;} .footer a:hover{text-decoration:underline;}
+    .ver{display:inline-block; margin-top:4px;}
+    .mode-wide .cards{display:flex; gap:22px; align-items:flex-start;}
+    .mode-wide .card{flex:1; margin-bottom:8px;}
   </style>
 </head>
-<body>
+<body class="mode-<?= mode ?>">
 
-<h1>FieldPulse Dimensional Pricebook Setup Tool</h1>
+  <div class="toolbar">
+    <span class="title">Pricebook Setup Assistant</span>
+    <? if (mode === 'wide') { ?>
+      <button class="toggle" id="dockBtn" title="Dock back to the side panel">&#8676; Dock</button>
+    <? } else { ?>
+      <button class="toggle" id="expandBtn" title="Open in a larger, resizable window">&#8596; Expand</button>
+    <? } ?>
+  </div>
 
-<p>
-	<a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#intro">Introduction</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_2">Create a Copy of the Sheet</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_3">Your Pricing Setup Workspace</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_4">Set Your Pricing Philosophy</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_5">Working with Items</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_6">Working with Item Options</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_7">Quality Checks</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_8">Apply Markups</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_9">Export Pricebook Files</a>
-</p>
+  <div class="intro">
+    Step-by-step help for building your location's pricebook and importing it into FieldPulse. Each step opens the matching guide in a new tab.
+  </div>
+  <div class="legend"><span class="pill">LINK TBD</span> section content is written but not yet published to HQ.</div>
 
-<h1>FieldPulse Dimensional Pricebook Import</h1>
+  <div class="cards">
+    <div class="card">
+      <div class="group-header"><span class="badge">GUIDE&nbsp;1</span> Setup &amp; Export</div>
+      <div class="tip">Build and price your pricebook in this sheet, then export the FieldPulse files.</div>
+      <ol class="steps">
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#intro"><span class="label">Introduction</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_0"><span class="label">Get Your Copy &amp; Activate the Tools</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_2"><span class="label">The Pricebook Tools Menu</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_3"><span class="label">Your Pricing Setup Workspace</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_4"><span class="label">Set Your Pricing Philosophy</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_5"><span class="label">Working with Items</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_6"><span class="label">Working with Item Options</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_7"><span class="label">Quality Checks</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_8"><span class="label">Apply Markups</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-setup-tool#section_9"><span class="label">Export Pricebook Files</span><span class="chev">&rsaquo;</span></a></li>
+      </ol>
+    </div>
 
-<p>
-	<a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#intro">Introduction</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_2">Import Item Options</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_3">Import Dimensional Items</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_4">Import the Pricebook</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_5">Rename &amp; Configure Pricebook</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_6">Review Pricebook</a>
-	<br><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_7">Refine Each Item</a>
-</p>
+    <div class="card">
+      <div class="group-header"><span class="badge">GUIDE&nbsp;2</span> Import into FieldPulse</div>
+      <div class="tip">Import order matters — bring in Item Options before Dimensional Items.</div>
+      <ol class="steps">
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#intro"><span class="label">Introduction</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_2"><span class="label">Import Item Options</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_3"><span class="label">Import Dimensional Items</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_4"><span class="label">Import the Pricebook</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_5"><span class="label">Rename &amp; Configure Pricebook</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_6"><span class="label">Review Pricebook</span><span class="chev">&rsaquo;</span></a></li>
+        <li><a href="https://hq.theglassguru.com/intranet/ls/content/fieldpulse-dimensional-pricebook-import#section_7"><span class="label">Refine Each Item</span><span class="chev">&rsaquo;</span></a></li>
+        <li><div class="pending"><span class="label">Import to QuickBooks Online</span><span class="tbd">LINK TBD</span></div></li>
+        <li><div class="pending"><span class="label">Reimporting — What You Need to Know</span><span class="tbd">LINK TBD</span></div></li>
+        <li><div class="pending"><span class="label">Common Import Errors &amp; Fixes</span><span class="tbd">LINK TBD</span></div></li>
+      </ol>
+    </div>
+  </div>
 
+  <div class="footer">
+    Stuck? Reach out to your Franchise Business Coach or visit <a href="https://hq.theglassguru.com">Guru HQ</a> for more tools &amp; resources.
+    <span class="ver" id="ver"></span>
+  </div>
+
+  <script>
+    (function () {
+      if (!(window.google && google.script && google.script.run)) return;
+      google.script.run
+        .withSuccessHandler(function (name) { var el = document.getElementById('ver'); if (el) el.textContent = name || ''; })
+        .withFailureHandler(function () { var el = document.getElementById('ver'); if (el) el.textContent = ''; })
+        .getPricebookFileName();
+      var expandBtn = document.getElementById('expandBtn');
+      if (expandBtn) expandBtn.onclick = function () {
+        google.script.run.withSuccessHandler(function () { google.script.host.close(); }).openGeminiWide();
+      };
+      var dockBtn = document.getElementById('dockBtn');
+      if (dockBtn) dockBtn.onclick = function () {
+        google.script.run.withSuccessHandler(function () { google.script.host.close(); }).openGeminiSidebar();
+      };
+    })();
+  </script>
 </body>
 </html>
