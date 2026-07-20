@@ -23,6 +23,7 @@ function onOpen(e) {
     .addSubMenu(ui.createMenu('🛠️ Utilities')
       .addItem('➕ Insert Row Below',           'insertRowBelowActive')
       .addItem('✅ Check for Duplicates',       'checkAllDuplicates')
+      .addItem('🔎 Check Levels Defined',       'checkLevelsDefined')
       .addItem('🔧 Repair Calculated Columns',  'repairCalculatedColumns')
       .addItem('🪜 Repair Variables Tier Formulas', 'repairVariablesTierFormulas')
       .addItem('🏷️ Update Named Ranges (advanced)', 'updateNamedRangesSheet'))
