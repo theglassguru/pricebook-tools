@@ -1,5 +1,5 @@
 /**
- * FieldPulse Pricebook 2.0 — Calculated Column Registry
+ * FieldPulse Pricebook 2.0 â€” Calculated Column Registry
  *
  * Canonical source of truth for every ARRAYFORMULA on the Items,
  * Item Option Values, and Item Groupings sheets, plus per-cell tier
@@ -8,11 +8,11 @@
  * Consumed by repairCalculatedColumns() in Menu.gs.
  *
  * Each entry in CALC_SHEETS maps a column letter to its anchor-row-2
- * ARRAYFORMULA. Repair clears the column body (row 2 → maxRow) and
+ * ARRAYFORMULA. Repair clears the column body (row 2 â†’ maxRow) and
  * writes the formula back at row 2; the ARRAYFORMULA spills the rest.
  *
  * Spill prevention: repairErrantCalculatedColumns() in Menu.gs
- * unconditionally sweeps row 3 → maxRows on every registry column before
+ * unconditionally sweeps row 3 â†’ maxRows on every registry column before
  * rewriting any errant anchor, so orphan static values below the anchor
  * cannot block the spill.
  *
@@ -30,7 +30,7 @@
 
 const CALC_SHEETS = [
   // ===========================================================================
-  // ITEMS — 28 ARRAYFORMULAs
+  // ITEMS â€” 28 ARRAYFORMULAs
   // ===========================================================================
   {
     name: 'Items',
@@ -77,7 +77,7 @@ const CALC_SHEETS = [
     IF((cost="")+(price="")+(IFERROR(cost*1,0)=0)>0,"",price/cost))
 ))`,
       AB: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),REGEXREPLACE(TRIM(E2:E),"\\s+"," "),""))`,
-      AC: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),UPPER(IF(REGEXMATCH(LOWER(TRIM(E2:E)),"hardware$"),SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(D2:D,", HARDWARE",""),", LABOR",""),", ","-"),"SHOWER & BATH","SHOWERBATH")&"-HDWR",SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(D2:D,", HARDWARE",""),", LABOR",""),", ","-"),"SHOWER & BATH","SHOWERBATH")&IF((B2:B<>"")*(C2:C<>""),"-"&SUBSTITUTE(B2:B,CHAR(34),"")&"-"&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(C2:C,"Patterned / Textured, Annealed","PT-A"),"Patterned / Textured, Tempered","PT-T"),"Reflective / Tinted, Annealed","RT-A"),"Reflective / Tinted, Tempered","RT-T"),"Laminated, Annealed","IMPACT"),"Annealed","A"),"Tempered","T"),"Laminated","L"),"Mirror","M"),", Specialty","-SP"),IF(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))="","","-"&REGEXREPLACE(REGEXREPLACE(REGEXREPLACE(UPPER(REGEXREPLACE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))," / ","-"),"(",""),")",""),CHAR(34),"")," ","-"),"-+","-")),"-SINGLE$","-S"),"-DOUBLE$","-D"),"-TRIPLE$","-T"))))&IF(AD2:AD="product","-P",IF(AD2:AD="service","-S",""))),""))`,
+      AC: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),UPPER(IF(REGEXMATCH(LOWER(TRIM(E2:E)),"hardware$"),(IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"restoration"),IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"glass"),"RESTORATION-GLASS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"window"),"RESTORATION-WINDOWS","RESTORATION")),IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"igu"),"GLASS-IGU",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"screen")*REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"door"),"SCREENS-DOORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"storefront|commercial"),"STOREFRONT",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"shower"),"SHOWERBATH",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"skylight"),"SKYLIGHTS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"mirror"),"MIRRORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"window"),"WINDOWS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"screen"),"SCREENS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"door"),"DOORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"glass"),"GLASS","MISC"))))))))))))&(IF(TRIM(REGEXREPLACE(REGEXREPLACE(LOWER(E2:E),"\\b(commercial|storefront|glass|igu|mirror|doors?|screens?|windows?|skylights?|shower|bath|hardware)\\b","")," +"," "))="","","-"&SUBSTITUTE(TRIM(REGEXREPLACE(REGEXREPLACE(LOWER(E2:E),"\\b(commercial|storefront|glass|igu|mirror|doors?|screens?|windows?|skylights?|shower|bath|hardware)\\b","")," +"," "))," ","-")))&"-HDWR",(IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"restoration"),IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"glass"),"RESTORATION-GLASS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"window"),"RESTORATION-WINDOWS","RESTORATION")),IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"igu"),"GLASS-IGU",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"screen")*REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"door"),"SCREENS-DOORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"storefront|commercial"),"STOREFRONT",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"shower"),"SHOWERBATH",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"skylight"),"SKYLIGHTS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"mirror"),"MIRRORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"window"),"WINDOWS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"screen"),"SCREENS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"door"),"DOORS",IF(REGEXMATCH(SUBSTITUTE(LOWER(E2:E),"pet door","pet"),"glass"),"GLASS","MISC"))))))))))))&IF((B2:B<>"")*(C2:C<>""),"-"&SUBSTITUTE(B2:B,CHAR(34),"")&"-"&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(C2:C,"Patterned / Textured, Annealed","PT-A"),"Patterned / Textured, Tempered","PT-T"),"Reflective / Tinted, Annealed","RT-A"),"Reflective / Tinted, Tempered","RT-T"),"Laminated, Annealed","IMPACT"),"Annealed","A"),"Tempered","T"),"Laminated","L"),"Mirror","M"),", Specialty","-SP"),IF(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))="","","-"&REGEXREPLACE(REGEXREPLACE(REGEXREPLACE(UPPER(REGEXREPLACE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(TRIM(REGEXREPLACE(E2:E,"^(Commercial Storefront|IGU|Monolithic Glass|Flat Mirror|Glass Hardware|Mirror Hardware|Glass|Mirror|Shower|Doors?|Screens?|Skylights?|Windows?)( Restoration)?\\s*",""))," / ","-"),"(",""),")",""),CHAR(34),"")," ","-"),"-+","-")),"-SINGLE$","-S"),"-DOUBLE$","-D"),"-TRIPLE$","-T"))))&IF(AD2:AD="product","-P",IF(AD2:AD="service","-S",""))),""))`,
       AD: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),LOWER(TRIM(F2:F)),""))`,
       O: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),1,""))`,
       P: `=ARRAYFORMULA(IF((A2:A=TRUE)*(E2:E<>""),IF(TRIM(F2:F)="Product","Yes",IF(TRIM(F2:F)="Service","No","")),""))`,
@@ -104,7 +104,7 @@ const CALC_SHEETS = [
   },
 
   // ===========================================================================
-  // ITEM OPTION VALUES — 9 ARRAYFORMULAs
+  // ITEM OPTION VALUES â€” 9 ARRAYFORMULAs
   // ===========================================================================
   {
     name: 'Item Option Values',
@@ -160,7 +160,7 @@ const CALC_SHEETS = [
   },
 
   // ===========================================================================
-  // ITEM GROUPINGS — 31 ARRAYFORMULAs
+  // ITEM GROUPINGS â€” 31 ARRAYFORMULAs
   // ===========================================================================
   {
     name: 'Item Groupings',
@@ -203,22 +203,22 @@ const CALC_SHEETS = [
 ];
 
 // ===========================================================================
-// VARIABLES — Tier Cliff Tables (per-cell formulas, NOT ARRAYFORMULA)
+// VARIABLES â€” Tier Cliff Tables (per-cell formulas, NOT ARRAYFORMULA)
 // ===========================================================================
 //
 // Two tier tables live on the Variables sheet:
-//   Glass & Mirrors          — rows 12–21 (10 tiers)
-//   Hardware, Parts, Other   — rows 26–35 (10 tiers)
+//   Glass & Mirrors          â€” rows 12â€“21 (10 tiers)
+//   Hardware, Parts, Other   â€” rows 26â€“35 (10 tiers)
 //
 // Three formula columns per row:
-//   G — Note text (range label)
-//   I — Sell @ Ceiling   = C × E + energy surcharge
-//   K — Cliff to Next Tier = I(row) − [ (C(row)+0.01) × E(row+1) + energy ]
+//   G â€” Note text (range label)
+//   I â€” Sell @ Ceiling   = C Ã— E + energy surcharge
+//   K â€” Cliff to Next Tier = I(row) âˆ’ [ (C(row)+0.01) Ã— E(row+1) + energy ]
 //
 // G first row:   "Anything <= [ceiling]"
 // G last row:    "Anything >= [ceiling]"
 // G middle rows: "Anything > [prev+0.01] - [ceiling]"
-// K last row:    static "—" (no next tier); NOT regenerated by repair.
+// K last row:    static "â€”" (no next tier); NOT regenerated by repair.
 //
 // Energy surcharge is computed identically in I and K:
 //   IF(energy_rate=0,0, base*energy_rate*IF(energy_method="Pass Through",1,markup))
@@ -236,7 +236,7 @@ function buildVariablesTierFormulas_() {
   const out = {};
   VARIABLES_TIER_TABLES.forEach(function (t) {
     for (let r = t.firstRow; r <= t.lastRow; r++) {
-      // G — Note text
+      // G â€” Note text
       if (r === t.firstRow) {
         out['G' + r] = '="Anything <= "&TEXT(C' + r + ',"$#,##0.00")';
       } else if (r === t.lastRow) {
@@ -245,11 +245,11 @@ function buildVariablesTierFormulas_() {
         out['G' + r] =
           '="Anything > "&TEXT(C' + (r - 1) + '+0.01,"$#,##0.00")&" - "&TEXT(C' + r + ',"$#,##0.00")';
       }
-      // I — Sell @ Ceiling
+      // I â€” Sell @ Ceiling
       out['I' + r] =
         '=C' + r + '*E' + r +
         ' + IF(energy_rate=0,0,C' + r + '*energy_rate*IF(energy_method="Pass Through",1,E' + r + '))';
-      // K — Cliff to Next Tier (skip last row; that cell stays as static "—")
+      // K â€” Cliff to Next Tier (skip last row; that cell stays as static "â€”")
       if (r < t.lastRow) {
         out['K' + r] =
           '=I' + r + ' - ((C' + r + '+0.01)*E' + (r + 1) +
@@ -283,6 +283,6 @@ function variablesTierTotalFormulas_() {
   return Object.keys(VARIABLES_TIER_FORMULAS).length;
 }
 // clasp+git pipeline verified 2026-05-05
-// Items section: +2 col shift for new source cols O/P; MIRROR→MIRRORS in AK/AL; AM/AN removed; new AO/AP passthroughs; TRIM applied to all AO:AY passthroughs 2026-05-20
+// Items section: +2 col shift for new source cols O/P; MIRRORâ†’MIRRORS in AK/AL; AM/AN removed; new AO/AP passthroughs; TRIM applied to all AO:AY passthroughs 2026-05-20
 // Item Groupings G/H/J/K/L/M synced to live sheet 2026-05-20
-// Variables tier formulas added (G/I/K, rows 12–21 + 26–35, 58 cells via generator) 2026-05-22
+// Variables tier formulas added (G/I/K, rows 12â€“21 + 26â€“35, 58 cells via generator) 2026-05-22
