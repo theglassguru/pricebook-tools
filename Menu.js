@@ -23,7 +23,9 @@ function onOpen(e) {
     .addSubMenu(ui.createMenu('🛠️ Utilities')
       .addItem('➕ Insert Row Below',           'insertRowBelowActive')
       .addItem('✅ Check for Duplicates',       'checkAllDuplicates')
-      .addItem('🔎 Check Levels Defined',       'checkLevelsDefined')
+      .addItem('🔎 Check Defined Levels',       'checkDefinedLevels')
+      .addItem('🧾 Check Item Accounts',        'checkItemAccounts')
+      .addItem('🔗 Link Option Names to Values', 'linkOptionNamesToValues')
       .addItem('🔧 Repair Calculated Columns',  'repairCalculatedColumns')
       .addItem('🪜 Repair Variables Tier Formulas', 'repairVariablesTierFormulas')
       .addItem('🏷️ Update Named Ranges (advanced)', 'updateNamedRangesSheet'))
@@ -171,6 +173,24 @@ function preExportHealthCheck() {
     }
   } catch (e) {
     checks.push({ label: 'Tier Pricing', ok: false, detail: 'Check could not run: ' + e.message });
+  }
+
+  // 4) Item Accounts — every included item needs Income (Z) + Purchase (AA)
+  try {
+    const ia = auditItemAccounts_(ss);
+    if (ia.error) {
+      checks.push({ label: 'Item Accounts', ok: false, detail: ia.error });
+    } else {
+      checks.push({
+        label: 'Item Accounts',
+        ok: ia.bad.length === 0,
+        detail: ia.bad.length === 0 ? 'Every included item has an Income and Purchase account.'
+                                    : ia.bad.length + ' included item' + (ia.bad.length === 1 ? '' : 's') + ' missing an account.',
+        hint: '🧾 Check Item Accounts'
+      });
+    }
+  } catch (e) {
+    checks.push({ label: 'Item Accounts', ok: false, detail: 'Check could not run: ' + e.message });
   }
 
   showHealthCheckModal_(checks);

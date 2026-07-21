@@ -1,43 +1,45 @@
 /**
- * FieldPulse Pricebook 2.0 — Check Levels Defined
+ * FieldPulse Pricebook 2.0 — Check Defined Levels
  *
- * Verifies every in-use row on the four authoring sheets carries a valid
+ * Verifies every REAL row on the four authoring sheets carries a valid
  * Pricebook Level tag: Basic, Normal, or Everything.
  *
- * A row is "in use" when its include flag (column A) is set — TRUE or FALSE.
- * Column A is the include boolean on all four sheets, so it's the consistent
- * signal for "this is a real, defined row." (To restrict the check to
- * included rows only, change the inUse test to `flag === true`.)
+ * A row is "real" when its name/identifier column is non-empty. Blank rows
+ * (and the hidden formula row 2) are skipped entirely — the include flag in
+ * column A is NOT used, because it can be set on otherwise-empty rows.
+ *
+ *   Sheet                Name column            Level column
+ *   Items                E  (Item)              AZ
+ *   Item Option Names    B  (Option Name)       M
+ *   Item Option Values   F  (Option Selection)  R
+ *   Item Groupings       F  (Item Name)         AT
  *
  * Two problems are reported per row:
  *   • Missing  — the Level cell is blank
  *   • Invalid  — the Level cell holds something other than the three values
  *
- * Level columns:  Items AZ · Item Option Names M · Item Option Values R ·
- *                 Item Groupings AT.  Header row 1, hidden ARRAYFORMULA anchor
- *                 row 2, data from row 3.  Read-only — never writes.
+ * Read-only — never writes.
  */
 
 const LEVEL_VALID = ['Basic', 'Normal', 'Everything'];
-const LEVEL_FIRST_DATA_ROW = 3;   // header row 1, hidden anchor row 2
-const LEVEL_FLAG_COL = 1;         // column A — include flag
+const LEVEL_FIRST_DATA_ROW = 3;   // header row 1, hidden formula row 2
 const LEVEL_MAX_LISTED = 50;      // cap rows listed per sheet in the modal
 
 const LEVEL_SPECS = [
-  { name: 'Items',              levelCol: 52, levelLetter: 'AZ' },
-  { name: 'Item Option Names',  levelCol: 13, levelLetter: 'M'  },
-  { name: 'Item Option Values', levelCol: 18, levelLetter: 'R'  },
-  { name: 'Item Groupings',     levelCol: 46, levelLetter: 'AT' }
+  { name: 'Items',              keyCol: 5, keyLabel: 'Item',             levelCol: 52, levelLetter: 'AZ' },
+  { name: 'Item Option Names',  keyCol: 2, keyLabel: 'Option Name',      levelCol: 13, levelLetter: 'M'  },
+  { name: 'Item Option Values', keyCol: 6, keyLabel: 'Option Selection', levelCol: 18, levelLetter: 'R'  },
+  { name: 'Item Groupings',     keyCol: 6, keyLabel: 'Item Name',        levelCol: 46, levelLetter: 'AT' }
 ];
 
-function checkLevelsDefined() {
+function checkDefinedLevels() {
   const ss = SpreadsheetApp.getActive();
   let audit;
   try {
     audit = auditLevels_(ss);
   } catch (err) {
     const ui = SpreadsheetApp.getUi();
-    ui.alert('Check Levels Defined — Error', err.message, ui.ButtonSet.OK);
+    ui.alert('Check Defined Levels — Error', err.message, ui.ButtonSet.OK);
     return;
   }
   showLevelsModal_(audit);
@@ -57,23 +59,22 @@ function auditLevels_(ss) {
     if (lastRow < LEVEL_FIRST_DATA_ROW) return;
 
     const numRows = lastRow - LEVEL_FIRST_DATA_ROW + 1;
-    const flags  = sheet.getRange(LEVEL_FIRST_DATA_ROW, LEVEL_FLAG_COL, numRows, 1).getValues();
+    const keys   = sheet.getRange(LEVEL_FIRST_DATA_ROW, spec.keyCol,   numRows, 1).getDisplayValues();
     const levels = sheet.getRange(LEVEL_FIRST_DATA_ROW, spec.levelCol, numRows, 1).getDisplayValues();
 
     for (var i = 0; i < numRows; i++) {
-      var flag = flags[i][0];
-      var inUse = (flag !== '' && flag !== null);
-      if (!inUse) continue;
+      var key = String(keys[i][0] == null ? '' : keys[i][0]).trim();
+      if (key === '') continue;   // blank row — not a real entry, skip
 
       report.checked++;
       result.totalChecked++;
 
       var lvl = String(levels[i][0] == null ? '' : levels[i][0]).trim();
       if (lvl === '') {
-        report.bad.push({ row: LEVEL_FIRST_DATA_ROW + i, reason: 'Missing', value: '' });
+        report.bad.push({ row: LEVEL_FIRST_DATA_ROW + i, name: key, reason: 'Missing', value: '' });
         result.totalBad++;
       } else if (LEVEL_VALID.indexOf(lvl) === -1) {
-        report.bad.push({ row: LEVEL_FIRST_DATA_ROW + i, reason: 'Invalid', value: lvl });
+        report.bad.push({ row: LEVEL_FIRST_DATA_ROW + i, name: key, reason: 'Invalid', value: lvl });
         result.totalBad++;
       } else {
         report.ok++;
@@ -88,7 +89,7 @@ function showLevelsModal_(audit) {
   let summaryClass, summaryText;
   if (audit.totalBad === 0) {
     summaryClass = 'ok';
-    summaryText = '✓ All ' + audit.totalChecked + ' in-use row' + (audit.totalChecked === 1 ? '' : 's') +
+    summaryText = '✓ All ' + audit.totalChecked + ' defined row' + (audit.totalChecked === 1 ? '' : 's') +
                   ' have a valid Level.';
   } else {
     summaryClass = 'warn';
@@ -103,14 +104,15 @@ function showLevelsModal_(audit) {
     if (s.error) {
       body += '<div class="error">' + escapeHtml_(s.error) + '</div>';
     } else if (s.bad.length === 0) {
-      body += '<div class="empty">✓ All ' + s.checked + ' in-use row' + (s.checked === 1 ? '' : 's') + ' OK</div>';
+      body += '<div class="empty">✓ All ' + s.checked + ' defined row' + (s.checked === 1 ? '' : 's') + ' OK</div>';
     } else {
       body += '<div class="count">' + s.bad.length + ' of ' + s.checked + ' row' +
               (s.bad.length === 1 ? '' : 's') + ' need a Level</div>';
-      body += '<table><thead><tr><th>Row</th><th>Problem</th><th>Current Value</th></tr></thead><tbody>';
+      body += '<table><thead><tr><th>Row</th><th>Name</th><th>Problem</th><th>Value</th></tr></thead><tbody>';
       s.bad.slice(0, LEVEL_MAX_LISTED).forEach(function (b) {
         var val = b.value === '' ? '<span class="muted">(blank)</span>' : escapeHtml_(b.value);
-        body += '<tr><td>' + b.row + '</td><td>' + escapeHtml_(b.reason) + '</td><td>' + val + '</td></tr>';
+        body += '<tr><td>' + b.row + '</td><td>' + escapeHtml_(b.name) + '</td><td>' +
+                escapeHtml_(b.reason) + '</td><td>' + val + '</td></tr>';
       });
       body += '</tbody></table>';
       if (s.bad.length > LEVEL_MAX_LISTED) {
@@ -135,7 +137,7 @@ function showLevelsModal_(audit) {
     '.muted{color:#6B7C8C;font-style:italic;}' +
     'table{width:100%;border-collapse:collapse;font-size:12px;}' +
     'th{background:#F5F8FB;text-align:left;padding:6px 10px;border-bottom:1px solid #D6DFE8;font-weight:600;color:#0B5394;}' +
-    'td{padding:5px 10px;border-bottom:1px solid #ECF0F3;}' +
+    'td{padding:5px 10px;border-bottom:1px solid #ECF0F3;vertical-align:top;}' +
     '.actions{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #D6DFE8;padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;}' +
     '.btn{padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;}' +
     '.btn-primary{background:#0B5394;color:white;}' +
@@ -145,5 +147,5 @@ function showLevelsModal_(audit) {
     '<script>document.getElementById("close-btn").onclick=function(){google.script.host.close();};</script>' +
     '</body></html>';
 
-  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(520).setHeight(560), 'Check Levels Defined');
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(560).setHeight(560), 'Check Defined Levels');
 }
