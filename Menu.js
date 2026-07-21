@@ -778,7 +778,7 @@ function showVariablesTierAuditModal_(audit) {
 function openGeminiSidebar() {
   const t = HtmlService.createTemplateFromFile('GeminiSidebar');
   t.mode = 'sidebar';
-  const html = t.evaluate().setTitle('Pricebook Assistant');
+  const html = t.evaluate().setTitle('Setup Guide');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -786,7 +786,7 @@ function openGeminiWide() {
   const t = HtmlService.createTemplateFromFile('GeminiSidebar');
   t.mode = 'wide';
   const html = t.evaluate().setWidth(600).setHeight(680);
-  SpreadsheetApp.getUi().showModelessDialog(html, 'Pricebook Assistant');
+  SpreadsheetApp.getUi().showModelessDialog(html, 'Setup Guide');
 }
 
 function getPricebookFileName() {
