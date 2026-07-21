@@ -14,9 +14,9 @@
       margin:0; padding:14px; color:var(--ink); font-size:13px; line-height:1.5; background:#fff;}
     .toolbar{display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:12px;}
     .toolbar .title{font-weight:700; color:var(--brand); font-size:14px;}
-    .toggle{display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+    .toggle{display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-weight:600;
       color:var(--brand); background:var(--panel); border:1px solid var(--line); border-radius:6px;
-      padding:5px 9px; cursor:pointer; font-family:inherit; white-space:nowrap;}
+      padding:3px 8px; line-height:1; cursor:pointer; font-family:inherit;}
     .toggle:hover{background:#EAF1F8; border-color:var(--brand);}
     .intro{background:var(--info-bg); border:1px solid var(--info-bd); border-radius:6px;
       padding:10px 12px; margin-bottom:14px; font-size:12px;}
@@ -62,9 +62,9 @@
 
   <div class="toolbar">
     <? if (mode === 'wide') { ?>
-      <button class="toggle" id="dockBtn" title="Dock back to the side panel">&#8676; Dock</button>
+      <button class="toggle" id="dockBtn" title="Dock back to the side panel" aria-label="Dock back to the side panel">&#8676;</button>
     <? } else { ?>
-      <button class="toggle" id="expandBtn" title="Open in a larger, resizable window">&#8596; Expand</button>
+      <button class="toggle" id="expandBtn" title="Open in a larger, resizable window" aria-label="Open in a larger, resizable window">&#8596;</button>
     <? } ?>
   </div>
 
